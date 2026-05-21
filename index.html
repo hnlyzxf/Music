@@ -1,0 +1,518 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>木子白音乐</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="木子白音乐">
+  <meta name="theme-color" content="#f8fafc">
+  <meta name="google" content="notranslate">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="assets/templates/maicong/apple-touch-icon.png">
+  <link href="https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app" class="app-shell" v-cloak>
+    <template v-if="uiTemplate === 'default'">
+      <aside class="sidebar" :class="{ open: sidebarOpen }">
+        <div class="brand">
+          <div class="brand-mark"><i class="fas fa-music"></i></div>
+          <div>
+            <strong>木子白音乐</strong>
+            <span>Music Console</span>
+          </div>
+        </div>
+        <nav class="side-nav">
+          <button class="side-link active" @click="goTo('#searchPanel')"><i class="fas fa-magnifying-glass"></i><span>音乐搜索</span></button>
+          <button class="side-link" @click="goTo('#playerPanel')"><i class="fas fa-circle-play"></i><span>播放器</span></button>
+          <button class="side-link" @click="goTo('#playlistPanel')"><i class="fas fa-list-ul"></i><span>播放列表</span></button>
+          <button class="side-link" @click="goTo('#lyricsPanel')"><i class="fas fa-align-left"></i><span>歌词面板</span></button>
+        </nav>
+        <div class="side-footer app-credit">
+          <p>作者：<a href="https://github.com/hnlyzxf" target="_blank" rel="noopener">木子白</a></p>
+          <p>音乐API来源：<a href="https://music.gdstudio.xyz" target="_blank" rel="noopener">GD音乐台</a></p>
+        </div>
+      </aside>
+
+      <div class="sidebar-mask" v-show="sidebarOpen" @click="sidebarOpen = false"></div>
+
+      <main class="workspace">
+        <header class="topbar">
+          <button class="icon-btn" @click="sidebarOpen = !sidebarOpen" title="菜单"><i class="fas fa-bars"></i></button>
+          <div class="topbar-title">
+            <h1>木子白音乐</h1>
+            <p>搜索、播放、同步歌词</p>
+          </div>
+          <div class="template-switch" role="group" aria-label="模板切换">
+            <button v-for="item in templateOptions" :key="item.key" :class="{ active: uiTemplate === item.key }" @click="setTemplate(item.key)">{{ item.label }}</button>
+          </div>
+        </header>
+
+        <section class="content-grid">
+          <div class="stat-card">
+            <span class="stat-icon blue"><i class="fas fa-headphones"></i></span>
+            <div><p>搜索结果</p><strong>{{ searchResults.length }}</strong></div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon green"><i class="fas fa-list-check"></i></span>
+            <div><p>播放列表</p><strong>{{ playList.length }}</strong></div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon amber"><i class="fas fa-gauge-high"></i></span>
+            <div><p>当前音质</p><strong>{{ selectedQuality }}K</strong></div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon violet"><i class="fas fa-repeat"></i></span>
+            <div><p>播放模式</p><strong>{{ playModeText }}</strong></div>
+          </div>
+
+          <section id="searchPanel" class="panel search-panel">
+            <div class="panel-header">
+              <div>
+                <span class="eyebrow">Search</span>
+                <h2>音乐搜索</h2>
+              </div>
+              <button class="ghost-btn" v-show="searchResults.length > 10" @click="toTopList(true)"><i class="fas fa-arrow-up"></i>顶部</button>
+            </div>
+            <div class="search-box">
+              <input type="search" placeholder="搜索音乐、歌手、专辑..." v-model="searchKeyword" @keyup.enter="searchMusic" :disabled="isSearching">
+              <select v-model="selectedSource" @change="sourceChange">
+                <option v-for="item in options" :value="item.v">{{ item.k }}</option>
+              </select>
+              <button class="primary-btn" @click="searchMusic" :disabled="isSearching"><i class="fas" :class="isSearching ? 'fa-spinner fa-spin' : 'fa-search'"></i>{{ isSearching ? '搜索中' : '搜索' }}</button>
+            </div>
+            <div class="song-table" id="searchResults">
+              <div class="empty-state" v-if="!searchResults.length">
+                <i class="fas" :class="isSearching ? 'fa-spinner fa-spin' : 'fa-magnifying-glass'"></i>
+                <p>{{ searchEmptyText }}</p>
+              </div>
+              <button v-for="(song, index) in searchResults" :key="song.source + '_' + song.id + '_' + index" class="song-row" :class="{ active: currIndSh === index }" @click="playSong(index, true)">
+                <span class="song-number">{{ (index + 1).toString().padStart(2, '0') }}</span>
+                <span class="song-main">
+                  <strong>{{ song.name }}</strong>
+                  <small>{{ formatArtist(song) }}</small>
+                </span>
+                <span class="row-actions">
+                  <i class="fas fa-plus" @click.stop="addPlayList(song)" title="添加到播放列表"></i>
+                  <i class="fas fa-download" @click.stop="downloadSong(index, true)" title="下载音乐"></i>
+                  <i class="fas fa-file-lines" v-show="!isMobile" @click.stop="downloadLyric(index, true)" title="下载歌词"></i>
+                </span>
+              </button>
+            </div>
+          </section>
+
+          <section id="playerPanel" class="panel player-panel">
+            <div class="cover-wrap">
+              <img class="cover" :class="{ playing: isPlaying }" :src="currentSong.cover || albumSbgImg" alt="专辑封面">
+            </div>
+            <div class="now-playing">
+              <span class="eyebrow">Now Playing</span>
+              <h2>{{ currentSong.title || '未选择歌曲' }}</h2>
+              <p>{{ currentSong.artist || '请搜索并选择要播放的歌曲' }}</p>
+            </div>
+            <div class="controls">
+              <button class="icon-btn large" @click="toggleMode" :title="playModeText"><i class="fas" :class="{ 'fa-shuffle': playMode == 'random', 'fa-repeat': playMode == 'loop', 'fa-1': playMode == 'one' }"></i></button>
+              <button class="icon-btn large" @click="prevSong" title="上一首"><i class="fas fa-step-backward"></i></button>
+              <button class="play-btn" @click="togglePlay" title="播放/暂停" :disabled="isSongLoading"><i :class="isSongLoading ? 'fas fa-spinner fa-spin' : (isPlaying ? 'fas fa-pause' : 'fas fa-play')"></i></button>
+              <button class="icon-btn large" @click="nextSong(true)" title="下一首"><i class="fas fa-step-forward"></i></button>
+              <button class="icon-btn large" @click="playSong(currInd, false, null, true)" title="刷新播放链接"><i class="fas fa-globe"></i></button>
+            </div>
+            <div class="progress-card">
+              <div class="progress-bar" @click="seekTo($event)">
+                <div class="progress-fill" :style="{ width: progress + '%' }"></div>
+              </div>
+              <div class="time-row"><span>{{ formatTime(currentTime) }}</span><span>{{ formatTime(totalTime) }}</span></div>
+            </div>
+            <div class="settings-grid">
+              <label>
+                <span>音质</span>
+                <select v-model="selectedQuality" @change="changeQuality">
+                  <option value="128">标准 128K</option>
+                  <option value="192">较高 192K</option>
+                  <option value="320">高品质 320K</option>
+                  <option value="740">无损 FLAC</option>
+                  <option value="999">Hi-Res</option>
+                </select>
+              </label>
+              <label>
+                <span>音量</span>
+                <div class="volume-line">
+                  <i :class="volumeIconClass" @click="setVolume(volume, true)"></i>
+                  <input type="range" min="0" max="100" v-model="volume" @input="setVolume(volume)">
+                </div>
+              </label>
+            </div>
+            <div class="download-grid">
+              <button class="secondary-btn" @click="downloadCurrentSong" :disabled="currInd===-1"><i class="fas fa-download"></i>下载音乐</button>
+              <button class="secondary-btn" @click="downloadCurrentLyric" :disabled="currInd===-1"><i class="fas fa-file-lines"></i>下载歌词</button>
+            </div>
+          </section>
+
+          <section id="playlistPanel" class="panel playlist-panel">
+            <div class="panel-header">
+              <div>
+                <span class="eyebrow">Queue</span>
+                <h2>播放列表</h2>
+              </div>
+              <div class="panel-actions">
+                <button class="ghost-btn" onclick="changeSyncCode()"><i class="fas fa-key"></i>同步码</button>
+                <button class="ghost-btn" @click="uploadList"><i class="fas fa-upload"></i>上传</button>
+                <button class="ghost-btn" @click="downloadList"><i class="fas fa-download"></i>下载</button>
+              </div>
+            </div>
+            <div class="queue-list" ref="listContainer">
+              <div class="empty-state compact" v-if="!playList.length">请先添加歌曲</div>
+              <button v-for="(song, index) in playList" :key="song.source + '_' + song.id + '_queue_' + index" class="queue-row" :class="{ active: currInd === index }" @click="playSong(index)">
+                <span class="song-main">
+                  <strong :id="'song_' + song.id">{{ song.name }}</strong>
+                  <small>{{ formatArtist(song) }}</small>
+                </span>
+                <i class="fas fa-minus-circle" @click.stop="delPlayList(index)" title="移除"></i>
+              </button>
+            </div>
+          </section>
+
+          <section id="lyricsPanel" class="panel lyrics-panel" :class="{ fullscreen: lyricFull }" :style="{ '--lyric-size': lyricFull ? lyricFontSize + 'px' : '15px' }">
+            <div class="panel-header">
+              <div>
+                <span class="eyebrow">Lyrics</span>
+                <h2>歌词</h2>
+              </div>
+              <div class="panel-actions">
+                <button class="icon-btn" @click="loadLyrics(currentSong.raw, true)" title="重新加载歌词"><i class="fas fa-align-left"></i></button>
+                <button class="icon-btn" v-show="lyricFull" @click="setFontSize(true)" title="放大"><i class="fas fa-plus"></i></button>
+                <button class="icon-btn" v-show="lyricFull" @click="setFontSize(false)" title="缩小"><i class="fas fa-minus"></i></button>
+                <button class="icon-btn" @click="lyricLock = !lyricLock" title="歌词滚动锁定"><i class="fas" :class="[ lyricLock ? 'fa-lock' : 'fa-lock-open' ]"></i></button>
+                <button class="icon-btn" @click="lyricFull = !lyricFull" title="全屏歌词"><i class="fas" :class="[ lyricFull ? 'fa-minimize' : 'fa-expand' ]"></i></button>
+              </div>
+            </div>
+            <div class="lyric-title" v-show="lyricFull && currentSong.title">{{ currentSong.artist }} - {{ currentSong.title }}</div>
+            <div class="lyrics-container" ref="lyricsContainer">
+              <div class="empty-state compact" v-if="!lyrics.length">暂无歌词</div>
+              <button v-for="(lyric, index) in lyrics" :key="index" class="lyric-line" :class="{ active: currentLyricIndex === index, clickable: !lyricLock }" @click="seekToLyric(lyric.time)">{{ lyric.text }}</button>
+            </div>
+          </section>
+        </section>
+      </main>
+    </template>
+
+    <template v-else-if="uiTemplate === 'mengkun'">
+      <div id="blur-img" :style="{ backgroundImage: `url(${currentSong.cover || 'assets/templates/mengkun/player_cover.png'})` }">
+        <div id="mobile-blur" :style="{ backgroundImage: `url(${currentSong.cover || 'assets/templates/mengkun/player_cover.png'})` }"></div>
+        <div class="blur-mask mobile-mask"></div>
+      </div>
+      <div class="g-glossy">
+        <div class="template-menu">
+          <button v-for="item in templateOptions" :key="item.key" :class="{ active: uiTemplate === item.key }" @click="setTemplate(item.key)">{{ item.label }}</button>
+        </div>
+        <div class="template-credit">
+          <p>作者：<a href="https://github.com/hnlyzxf" target="_blank" rel="noopener">木子白</a></p>
+          <p>音乐API来源：<a href="https://music.gdstudio.xyz" target="_blank" rel="noopener">GD音乐台</a></p>
+        </div>
+        <div class="center">
+          <div class="container">
+            <div class="btn-bar">
+              <div class="btn-box" id="btn-area">
+                <button type="button" class="btn" data-action="playing" :class="{ active: mkPanel === 'playing' }" title="正在播放列表" @click="setMkPanel('playing')">正在播放</button>
+                <button type="button" class="btn" data-action="sheet" :class="{ active: mkPanel === 'sheet' }" title="音乐播放列表" @click="setMkPanel('sheet')">播放列表</button>
+                <button type="button" class="btn" data-action="search" :class="{ active: mkPanel === 'search' }" title="点击搜索音乐" @click="setMkPanel('search')">歌曲搜索</button>
+              </div>
+            </div>
+
+            <div class="data-area">
+              <div id="search-area" class="data-box search-box-mk" v-show="mkPanel === 'search'">
+                <form @submit.prevent="searchMusic">
+                  <div class="search-group">
+                    <input type="search" v-model="searchKeyword" placeholder="搜索歌手、歌名、专辑" :disabled="isSearching" @click.stop @keydown.stop>
+                    <button type="submit" :disabled="isSearching">{{ isSearching ? '搜索中' : '搜索' }}</button>
+                  </div>
+                  <div class="radio-group">
+                    <label v-for="item in options" :key="item.v">
+                      <input type="radio" name="mk-source" :value="item.v" v-model="selectedSource" @change="sourceChange">
+                      {{ item.k }}
+                    </label>
+                  </div>
+                </form>
+              </div>
+
+              <div id="sheet" class="data-box" v-show="mkPanel === 'sheet'">
+                <div class="sheet-item sheet-playing">
+                  <img class="sheet-cover" :src="currentSong.cover || 'assets/templates/mengkun/player_cover.png'" alt="">
+                  <p class="sheet-name">正在播放</p>
+                </div>
+                <div class="sheet-item" @click="setMkPanel('playing')">
+                  <img class="sheet-cover" src="assets/templates/mengkun/history.png" alt="">
+                  <p class="sheet-name">当前列表</p>
+                </div>
+                <div class="sheet-title-bar">
+                  播放列表共 {{ playList.length }} 首，搜索结果 {{ searchResults.length }} 首
+                </div>
+                <div class="sheet-title-bar login-btn" onclick="changeSyncCode()">同步码</div>
+              </div>
+
+              <div id="main-list" class="music-list data-box" :class="{ 'with-search': mkPanel === 'search' }" v-show="mkPanel === 'playing' || mkPanel === 'search'">
+                <div class="list-item list-head">
+                  <span class="list-num"></span>
+                  <span class="auth-name">歌手</span>
+                  <span class="music-album">专辑</span>
+                  <span class="music-name">歌曲</span>
+                </div>
+                <div v-for="(song, index) in playList" v-show="mkPanel === 'playing'" :key="song.source + '_' + song.id + '_mk_queue_' + index" class="list-item list-clickable" :class="{ 'list-playing': currInd === index }" @click="playSong(index)">
+                  <span class="list-num">{{ index + 1 }}</span>
+                  <span class="auth-name">{{ Array.isArray(song.artist) ? song.artist.join(' / ') : song.artist || '未知歌手' }}</span>
+                  <span class="music-album">{{ song.album || '未知专辑' }}</span>
+                  <span class="music-name"><span class="music-name-cult">{{ song.name }}</span></span>
+                  <span class="list-menu">
+                    <i class="list-icon icon-play" title="播放" @click.stop="playSong(index)"></i>
+                    <i class="list-icon icon-download" title="下载" @click.stop="downloadSong(index)"></i>
+                    <i class="list-icon icon-share" title="删除" @click.stop="delPlayList(index)"></i>
+                  </span>
+                  <span class="list-mobile-menu" @click.stop="showSongInfo(song)"></span>
+                </div>
+                <div v-for="(song, index) in searchResults" v-show="mkPanel === 'search'" :key="song.source + '_' + song.id + '_mk_search_' + index" class="list-item list-clickable search-result" :class="{ 'list-playing': currIndSh === index }" @click="playSong(index, true)">
+                  <span class="list-num">{{ index + 1 }}</span>
+                  <span class="auth-name">{{ Array.isArray(song.artist) ? song.artist.join(' / ') : song.artist || '未知歌手' }}</span>
+                  <span class="music-album">{{ song.album || '搜索结果' }}</span>
+                  <span class="music-name"><span class="music-name-cult">{{ song.name }}</span></span>
+                  <span class="list-menu">
+                    <i class="list-icon icon-play" title="播放" @click.stop="playSong(index, true)"></i>
+                    <i class="list-icon icon-download" title="下载" @click.stop="downloadSong(index, true)"></i>
+                    <i class="list-icon icon-share" title="添加" @click.stop="addPlayList(song)"></i>
+                  </span>
+                  <span class="list-mobile-menu" @click.stop="showSongInfo(song)"></span>
+                </div>
+                <div class="sheet-title-bar" v-if="mkPanel === 'playing' && !playList.length">当前播放列表为空</div>
+                <div class="sheet-title-bar" v-if="mkPanel === 'search' && !searchResults.length">{{ searchEmptyText }}</div>
+              </div>
+            </div>
+
+            <div class="player" id="player" :class="{ 'mk-mobile-player-active': mkPanel === 'player' }">
+              <div class="cover">
+                <img :src="currentSong.cover || 'assets/templates/mengkun/player_cover.png'" class="music-cover" id="music-cover" :class="{ playing: isPlaying }" alt="专辑封面">
+              </div>
+              <div class="lyric">
+                <ul id="lyric" ref="lyricsContainer">
+                  <li v-for="(lyric, index) in lyrics" :key="index" :class="{ lplaying: currentLyricIndex === index }" @click="seekToLyric(lyric.time)">{{ lyric.text }}</li>
+                  <li class="lyric-tip" v-if="!lyrics.length">{{ currentSong.title || '暂无歌词' }}</li>
+                </ul>
+              </div>
+              <div id="music-info" :title="currentSong.artist || '点击查看歌曲信息'" @click="showSongInfo()"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div class="container">
+            <div class="con-btn">
+              <a href="javascript:;" class="player-btn btn-prev" title="上一首" @click="prevSong"></a>
+              <a href="javascript:;" class="player-btn btn-play" :class="{ 'btn-state-paused': isPlaying }" title="暂停/继续" @click="togglePlay"></a>
+              <a href="javascript:;" class="player-btn btn-next" title="下一首" @click="nextSong(true)"></a>
+              <a href="javascript:;" class="player-btn btn-order" :class="{ 'btn-order-random': playMode === 'random', 'btn-order-single': playMode === 'one', 'btn-order-list': playMode === 'loop' }" :title="playModeText" @click="toggleMode"></a>
+            </div>
+
+            <div class="vol">
+              <div class="quiet">
+                <a href="javascript:;" class="player-btn btn-quiet" :class="{ 'btn-state-quiet': volume == 0 }" title="静音" @click="setVolume(volume, true)"></a>
+              </div>
+              <div class="volume">
+                <div class="volume-box">
+                  <div id="volume-progress" class="mkpgb-area" @click="setVolume(Math.max(0, Math.min(100, Math.round(($event.offsetX / $event.currentTarget.clientWidth) * 100))))">
+                    <div class="mkpgb-bar"></div>
+                    <div class="mkpgb-cur" :style="{ width: volume + '%' }"></div>
+                    <div class="mkpgb-dot" :style="{ left: volume + '%' }"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="progress">
+              <div class="progress-box">
+                <div id="music-progress" class="mkpgb-area" @click="seekTo($event)">
+                  <div class="mkpgb-bar"></div>
+                  <div class="mkpgb-cur" :style="{ width: progress + '%' }"></div>
+                  <div class="mkpgb-dot dot-move" :style="{ left: progress + '%' }"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template v-else-if="uiTemplate === 'maicong'">
+      <section class="am-g about">
+        <div class="am-container am-margin-vertical-xl">
+          <header class="am-padding-vertical">
+            <h2 class="about-title about-color">音乐搜索器</h2>
+            <p class="am-text-center">多站合一音乐搜索解决方案</p>
+            <div class="template-menu maicong-template-menu">
+              <button v-for="item in templateOptions" :key="item.key" :class="{ active: uiTemplate === item.key }" @click="setTemplate(item.key)">{{ item.label }}</button>
+            </div>
+          </header>
+          <hr>
+          <div class="am-u-lg-12 am-padding-vertical">
+            <form id="j-validator" class="am-form am-margin-bottom-lg" method="post" @submit.prevent="submitMusic177" v-show="!music177MainVisible">
+              <div class="am-u-md-12 am-u-sm-centered">
+                <ul id="j-nav" class="am-nav am-nav-pills am-nav-justify am-margin-bottom music-tabs">
+                  <li data-filter="name" :class="{ 'am-active': music177Mode === 'name' }"><a href="javascript:;" @click.prevent="setMusic177Mode('name')">音乐名称</a></li>
+                  <li data-filter="id" :class="{ 'am-active': music177Mode === 'id' }"><a href="javascript:;" @click.prevent="setMusic177Mode('id')">音乐 ID</a></li>
+                  <li data-filter="url" :class="{ 'am-active': music177Mode === 'url' }"><a href="javascript:;" @click.prevent="setMusic177Mode('url')">音乐地址</a></li>
+                </ul>
+                <div class="am-form-group">
+                  <input id="j-input" :data-filter="music177Mode" class="am-form-field am-input-lg am-text-center am-radius" :placeholder="music177Placeholder" :pattern="music177Pattern" required v-model="searchKeyword">
+                  <div class="am-alert am-alert-danger am-animation-shake"></div>
+                </div>
+                <div id="j-type" class="am-form-group am-text-center music-type" v-show="music177Mode !== 'url'">
+                  <label class="am-radio-inline" v-for="item in options" :key="item.v">
+                    <input type="radio" name="music_type" :value="item.v" v-model="selectedSource" @change="sourceChange">
+                    {{ item.k }}
+                  </label>
+                </div>
+                <button id="j-submit" type="submit" class="am-btn am-btn-primary am-btn-lg am-btn-block am-radius" :disabled="isSearching">{{ isSearching ? 'Getting...' : 'Get √' }}</button>
+              </div>
+            </form>
+
+            <form id="j-main" class="am-form am-u-md-12 am-u-sm-centered music-main visible" @submit.prevent v-show="music177MainVisible">
+              <a type="button" id="j-back" class="am-btn am-btn-success am-btn-lg am-btn-block am-radius am-margin-bottom-lg" @click="backMusic177">成功 Get √ 返回继续 <i class="am-icon-reply am-icon-fw"></i></a>
+              <div class="am-g am-margin-bottom-sm">
+                <div class="am-u-lg-6">
+                  <div class="am-input-group am-input-group-sm am-margin-bottom-sm">
+                    <span class="am-input-group-label"><i class="fas fa-link"></i></span>
+                    <input id="j-link" class="am-form-field" readonly :value="currentSong.raw ? currentSong.raw.id : ''">
+                    <span class="am-input-group-btn"><a id="j-link-btn" class="am-btn am-btn-default" @click="downloadCurrentSong"><i class="fas fa-download"></i></a></span>
+                  </div>
+                </div>
+                <div class="am-u-lg-6">
+                  <div class="am-input-group am-input-group-sm am-margin-bottom-sm">
+                    <span class="am-input-group-label"><i class="fas fa-music"></i></span>
+                    <input id="j-src" class="am-form-field" readonly :value="currentSong.title || ''">
+                    <span class="am-input-group-btn"><a id="j-src-btn" class="am-btn am-btn-default" @click="togglePlay"><i id="j-src-btn-icon" :class="isPlaying ? 'fas fa-pause' : 'fas fa-play'"></i></a></span>
+                  </div>
+                </div>
+              </div>
+              <div class="am-g">
+                <div class="am-u-lg-6">
+                  <div class="am-input-group am-input-group-sm am-margin-bottom-sm">
+                    <span class="am-input-group-label"><i class="fas fa-list-ol"></i></span>
+                    <input id="j-songid" class="am-form-field" readonly :value="currentSong.id || ''">
+                  </div>
+                </div>
+                <div class="am-u-lg-6">
+                  <div class="am-input-group am-input-group-sm am-margin-bottom-sm">
+                    <span class="am-input-group-label"><i class="fas fa-file-lines"></i></span>
+                    <input id="j-lrc" class="am-form-field" readonly :value="lyrics.length ? '已加载歌词' : ''">
+                    <span class="am-input-group-btn"><a id="j-lrc-btn" class="am-btn am-btn-default" @click="downloadCurrentLyric"><i id="j-lrc-btn-icon" class="fas fa-download"></i></a></span>
+                  </div>
+                </div>
+              </div>
+              <div class="am-g">
+                <div class="am-u-lg-6">
+                  <div class="am-input-group am-input-group-sm am-margin-bottom-sm">
+                    <span class="am-input-group-label"><i class="fas fa-tag"></i></span>
+                    <input id="j-name" class="am-form-field" readonly :value="currentSong.title || ''">
+                  </div>
+                </div>
+                <div class="am-u-lg-6">
+                  <div class="am-input-group am-input-group-sm am-margin-bottom-sm">
+                    <span class="am-input-group-label"><i class="fas fa-user"></i></span>
+                    <input id="j-author" class="am-form-field" readonly :value="currentSong.artist || ''">
+                  </div>
+                </div>
+              </div>
+              <div id="j-show" class="am-margin-vertical">
+                <div id="j-player" class="aplayer aplayer-withlrc aplayer-withlist">
+                  <div class="aplayer-pic" :style="{ backgroundImage: `url(${currentSong.cover || 'assets/templates/maicong/nopic.jpg'})` }">
+                    <button type="button" class="aplayer-button" @click="togglePlay" :disabled="isSongLoading"><i :class="isSongLoading ? 'fas fa-spinner fa-spin' : (isPlaying ? 'fas fa-pause' : 'fas fa-play')"></i></button>
+                  </div>
+                  <div class="aplayer-info">
+                    <div class="aplayer-music">
+                      <span class="aplayer-title">{{ currentSong.title || '未选择歌曲' }}</span>
+                      <span class="aplayer-author">{{ currentSong.artist || '搜索后选择歌曲开始播放' }}</span>
+                    </div>
+                    <div class="aplayer-controller">
+                      <button type="button" @click="prevSong"><i class="fas fa-backward-step"></i></button>
+                      <div class="aplayer-bar-wrap" @click="seekTo($event)"><div class="aplayer-bar"><div class="aplayer-loaded"></div><div class="aplayer-played" :style="{ width: progress + '%' }"><span class="aplayer-thumb"></span></div></div></div>
+                      <button type="button" @click="nextSong(true)"><i class="fas fa-forward-step"></i></button>
+                    </div>
+                    <div class="aplayer-lrc-wrap">
+                      <div class="aplayer-lrc" ref="lyricsContainer">
+                        <p v-for="(lyric, index) in lyrics" :key="index" :class="{ active: currentLyricIndex === index }" @click="seekToLyric(lyric.time)">{{ lyric.text }}</p>
+                        <p v-if="!lyrics.length" class="aplayer-lrc-empty">暂无歌词</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="aplayer-list">
+                    <ol>
+                      <li v-for="(song, index) in searchResults" :key="song.source + '_' + song.id + '_mc177_search_' + index" :class="{ active: currIndSh === index }" @click="playSong(index, true)">
+                        <span class="aplayer-list-index">{{ index + 1 }}</span>
+                        <span class="aplayer-list-title">{{ song.name }}</span>
+                        <span class="aplayer-list-author">{{ formatArtist(song) }}</span>
+                        <button type="button" class="aplayer-list-add" @click.stop="addPlayList(song)">+</button>
+                      </li>
+                      <li v-for="(song, index) in playList" :key="song.source + '_' + song.id + '_mc177_queue_' + index" :class="{ active: currInd === index }" @click="playSong(index)">
+                        <span class="aplayer-list-index">{{ index + 1 }}</span>
+                        <span class="aplayer-list-title">{{ song.name }}</span>
+                        <span class="aplayer-list-author">{{ formatArtist(song) }}</span>
+                        <button type="button" class="aplayer-list-add" @click.stop="delPlayList(index)">-</button>
+                      </li>
+                    </ol>
+                    <div class="aplayer-more" v-if="!searchResults.length && !playList.length">{{ searchEmptyText }}</div>
+                  </div>
+                </div>
+              </div>
+            </form>
+
+            <div class="am-u-md-12 am-u-sm-centered am-margin-vertical music-tips">
+              <h4>帮助：</h4>
+              <p><b>标红</b> 为 <strong>音乐 ID</strong>，<u>下划线</u> 表示 <strong>音乐地址</strong></p>
+              <ul>
+                <li>蜻蜓 FM 的音乐 ID 需要使用 <code>|</code> 组合，例如 <code>158696|5266259</code></li>
+              </ul>
+              <blockquote id="j-quote" :class="{ 'music-overflow': !music177TipsExpanded }">
+                <p><span>网易：</span><u>https://music.163.com/#/song?id=<b>25906124</b></u></p>
+                <p><span>QQ：</span><u>https://y.qq.com/n/yqq/song/<b>002B2EAA3brD5b</b>.html</u></p>
+                <p><span>酷狗：</span><u>http://www.kugou.com/song/#hash=<b>08228af3cb404e8a4e7e9871bf543ff6</b></u></p>
+                <p><span>酷我：</span><u>https://www.kuwo.cn/play_detail/<b>175264544</b>/</u></p>
+                <p><span>千千：</span><u>https://music.taihe.com/song/<b>266069</b></u></p>
+                <p><span>一听：</span><u>https://www.1ting.com/player/b6/player_<b>357838</b>.html</u></p>
+                <p><span>咪咕：</span><u>https://music.migu.cn/v3/music/song/<b>477803</b></u></p>
+                <p><span>荔枝：</span><u>https://www.lizhi.fm/1947925/<b>2498707770886461446</b></u></p>
+                <p><span>蜻蜓：</span><u>https://www.qingting.fm/channels/<b>158696</b>/programs/<b>5266259</b></u></p>
+                <p><span>喜马拉雅：</span><u>https://www.ximalaya.com/51701370/sound/<b>24755731</b></u></p>
+                <p><span>5sing原创：</span><u>http://5sing.kugou.com/yc/<b>3082899</b>.html</u></p>
+                <p><span>5sing翻唱：</span><u>http://5sing.kugou.com/fc/<b>14369766</b>.html</u></p>
+                <p><span>全民K歌：</span>只支持根据 ID 或地址解析，不支持搜索名称</p>
+              </blockquote>
+              <button type="button" id="j-more" class="music-more" @click="toggleMusic177Tips">{{ music177TipsExpanded ? '收起' : '查看更多' }}</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <footer class="footer">
+        <p class="am-text-sm">作者：<a href="https://github.com/hnlyzxf" target="_blank" rel="noopener">木子白</a></p>
+        <p class="am-text-sm">音乐API来源：<a href="https://music.gdstudio.xyz" target="_blank" rel="noopener">GD音乐台</a></p>
+      </footer>
+    </template>
+
+    <audio
+      ref="audioPlayer"
+      preload="metadata"
+      @timeupdate="updateProgress"
+      @loadedmetadata="updateTotalTime"
+      @ended="nextSong(false)"
+      @play="isPlaying = true"
+      @pause="isPlaying = false"
+    ></audio>
+
+    <div class="loading hide" id="loadingRef"><i class="fas fa-spinner"></i><span>加载中...</span></div>
+  </div>
+
+  <script src="assets/vendor/vue.global.prod.js"></script>
+  <script src="assets/vendor/pako.min.js"></script>
+  <script src="assets/vendor/localforage.min.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+﻿{
+  "name": "木子白音乐",
+  "short_name": "木子白音乐",
+  "icons": [
+    {
+      "src": "assets/templates/maicong/apple-touch-icon.png",
+      "sizes": "128x128",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0a161e"
+}
